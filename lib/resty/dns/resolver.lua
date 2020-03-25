@@ -152,7 +152,8 @@ function _M.new(class, opts)
     tcp_sock:settimeout(timeout)
 
     return setmetatable(
-                { cur = rand(1, n), socks = socks,
+            -- init cur with 1 instead of using random value
+                { cur = 1, socks = socks,
                   tcp_sock = tcp_sock,
                   servers = servers,
                   retrans = opts.retrans or 5,
@@ -847,6 +848,17 @@ function _M.query(self, qname, opts, tries)
     -- print("query: ", cjson.encode(concat(query, "")))
 
     local retrans = self.retrans
+
+    -- if retrans is greater than servers num, use retrans,
+    -- otherwise use servers num as retrans, so we we can try all nameservers
+    if retrans < #self.servers then
+        retrans = #self.servers
+    end
+
+    -- try nameservers in order
+    self.cur = 1
+
+
     if tries then
         tries[1] = nil
     end
@@ -887,6 +899,14 @@ function _M.query(self, qname, opts, tries)
                     end
 
                     if answers then
+                        -- 3 means name err
+                        if 3 == answers.errcode then
+                            local server = _get_cur_server(self)
+                            err = concat(server, ":") .. ": " .. answers.errstr
+                            if i ~= retrans then
+                                break
+                            end
+                        end
                         return answers, nil, tries
                     end
                 end
